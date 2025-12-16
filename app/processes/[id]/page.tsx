@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Clock } from "lucide-react";
+import { ArrowLeft, Clock, ShieldX } from "lucide-react";
 import { toast } from "sonner";
 
 interface ProcessData {
@@ -48,12 +48,14 @@ export default function ProcessDetailPage({
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmDialog, setConfirmDialog] = useState<Decision | null>(null);
+  const [hasAccess, setHasAccess] = useState(false);
 
   const fetchData = async () => {
-    const [pRes, tRes, dRes] = await Promise.all([
+    const [pRes, tRes, dRes, aRes] = await Promise.all([
       fetch(`/api/processes/${id}`),
       fetch(`/api/processes/${id}/trajectory`),
       fetch(`/api/processes/${id}/decisions`),
+      fetch(`/api/processes/${id}/access`),
     ]);
 
     if (!pRes.ok) {
@@ -64,6 +66,10 @@ export default function ProcessDetailPage({
     setProcess(await pRes.json());
     setTrajectory(await tRes.json());
     setDecisions(await dRes.json());
+    
+    const accessData = await aRes.json();
+    setHasAccess(accessData.hasAccess);
+    
     setLoading(false);
   };
 
@@ -80,13 +86,14 @@ export default function ProcessDetailPage({
       body: JSON.stringify({ id_dec: confirmDialog.id_dec }),
     });
 
+    const data = await res.json();
+    
     if (res.ok) {
-      const data = await res.json();
       toast.success(`Переход: ${data.new_state.state_name}`);
       setConfirmDialog(null);
       fetchData();
     } else {
-      toast.error("Ошибка");
+      toast.error(data.error || "Ошибка");
     }
   };
 
@@ -136,17 +143,26 @@ export default function ProcessDetailPage({
                 </p>
               </div>
               {decisions.length > 0 && (
-                <div className="flex gap-2">
-                  {decisions.map((d) => (
-                    <Button
-                      key={d.id_dec}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setConfirmDialog(d)}
-                    >
-                      {d.name}
-                    </Button>
-                  ))}
+                <div className="flex flex-col items-end gap-2">
+                  {!hasAccess && (
+                    <Badge variant="destructive" className="flex items-center gap-1">
+                      <ShieldX className="h-3 w-3" />
+                      Нет доступа
+                    </Badge>
+                  )}
+                  <div className="flex gap-2">
+                    {decisions.map((d) => (
+                      <Button
+                        key={d.id_dec}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setConfirmDialog(d)}
+                        disabled={!hasAccess}
+                      >
+                        {d.name}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

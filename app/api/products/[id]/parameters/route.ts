@@ -3,6 +3,8 @@ import {
   getProductById,
   getProductParameters,
   upsertProductParameter,
+  validateParamValue,
+  getParameterConstraints,
 } from "@/lib/db/queries/products";
 import {
   updateProductParametersSchema,
@@ -22,7 +24,9 @@ export async function GET(
     }
 
     const parameters = await getProductParameters(id);
-    return NextResponse.json(parameters);
+    const constraints = await getParameterConstraints(id);
+    
+    return NextResponse.json({ parameters, constraints });
   } catch (error) {
     console.error("Error fetching product parameters:", error);
     return NextResponse.json(
@@ -53,7 +57,31 @@ export async function PUT(
       );
     }
 
-    // Обновляем все параметры
+    // Валидируем все параметры перед сохранением
+    const validationErrors: { id_par: number; error: string }[] = [];
+    
+    for (const param of validation.data.parameters) {
+      const result = await validateParamValue(id, param.id_par, param.val);
+      if (!result.is_valid) {
+        validationErrors.push({
+          id_par: param.id_par,
+          error: result.error_message || "Некорректное значение",
+        });
+      }
+    }
+
+    // Если есть ошибки валидации — возвращаем их
+    if (validationErrors.length > 0) {
+      return NextResponse.json(
+        { 
+          error: "Ошибки валидации параметров",
+          validation_errors: validationErrors 
+        },
+        { status: 422 }
+      );
+    }
+
+    // Сохраняем параметры
     for (const param of validation.data.parameters) {
       await upsertProductParameter(
         id,
@@ -65,7 +93,7 @@ export async function PUT(
 
     // Возвращаем обновлённые параметры
     const updatedParameters = await getProductParameters(id);
-    return NextResponse.json(updatedParameters);
+    return NextResponse.json({ parameters: updatedParameters });
   } catch (error: unknown) {
     const pgError = error as { code?: string };
     if (pgError.code === "23503") {

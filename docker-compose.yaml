@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_USER: pms
       POSTGRES_PASSWORD: pms_secret
-      POSTGRES_DB: pms_db
+      POSTGRES_DB: gjxt
     ports:
       - "5432:5432"
     volumes:
@@ -17,6 +17,16 @@ services:
       timeout: 5s
       retries: 5
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pms_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
 volumes:
   postgres_data:
-

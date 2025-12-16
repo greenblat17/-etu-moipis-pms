@@ -8,10 +8,18 @@ export async function getAllProcesses(filters?: {
   let sql = `
     SELECT p.id_process, p.name, p.sh_name, p.id_prod, p.type_pr,
            pr.name as product_name,
-           tp.name as template_name
+           tp.name as template_name,
+           ts.name as state_name,
+           ts.sh_name as state_sh_name
     FROM process p
     JOIN prod pr ON pr.id_prod = p.id_prod
     JOIN type_process tp ON tp.id_type_proc = p.type_pr
+    LEFT JOIN LATERAL (
+      SELECT id_state FROM trajctory t 
+      WHERE t.id_process = p.id_process 
+      ORDER BY num_pos DESC LIMIT 1
+    ) curr ON true
+    LEFT JOIN type_state ts ON ts.id_state = curr.id_state
     WHERE 1=1
   `;
   const params: unknown[] = [];
@@ -119,6 +127,20 @@ export async function getAvailableDecisions(
   `,
     [processId]
   );
+}
+
+// Получить следующее состояние из БД
+export async function getNextStateFromDb(
+  templateId: number,
+  currentStateId: number,
+  decisionId: number
+): Promise<number | null> {
+  const row = await queryOne<{ next_state: number }>(
+    `SELECT next_state FROM decision_map 
+     WHERE id_type_proc = $1 AND id_state = $2 AND id_dec = $3`,
+    [templateId, currentStateId, decisionId]
+  );
+  return row?.next_state || null;
 }
 
 // Принять решение (добавить шаг в траекторию)

@@ -91,6 +91,56 @@ export async function deleteProduct(id: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+// Валидация значения параметра
+export async function validateParamValue(
+  productId: string,
+  parameterId: number,
+  value: string | null
+): Promise<{
+  is_valid: boolean;
+  error_message: string | null;
+  min_val: string | null;
+  max_val: string | null;
+}> {
+  if (!value) {
+    return { is_valid: true, error_message: null, min_val: null, max_val: null };
+  }
+
+  const result = await queryOne<{
+    is_valid: boolean;
+    error_message: string | null;
+    min_val: string | null;
+    max_val: string | null;
+  }>(
+    `SELECT * FROM validate_param_value($1, $2, $3)`,
+    [productId, parameterId, value]
+  );
+
+  return result || { is_valid: true, error_message: null, min_val: null, max_val: null };
+}
+
+// Получить ограничения параметров для класса товара
+export async function getParameterConstraints(
+  productId: string
+): Promise<{
+  id_par: number;
+  par_name: string;
+  min_val: string | null;
+  max_val: string | null;
+}[]> {
+  return query(
+    `
+    SELECT pc.id_par, p.name as par_name, pc.min_val, pc.max_val
+    FROM par_class pc
+    JOIN parametr p ON p.id_par = pc.id_par
+    JOIN prod pr ON pr.id_class = pc.id_class
+    WHERE pr.id_prod = $1
+    ORDER BY pc.id_par
+    `,
+    [productId]
+  );
+}
+
 export async function upsertProductParameter(
   productId: string,
   parameterId: number,

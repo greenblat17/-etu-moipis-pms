@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, Play, FileText, LayoutDashboard } from "lucide-react";
+import { useSession, signOut } from "next-auth/react";
+import { Package, Play, FileText, LayoutDashboard, LogOut, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 const navigation = [
   { title: "Дашборд", href: "/", icon: LayoutDashboard },
@@ -14,6 +16,7 @@ const navigation = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-56 border-r border-border bg-sidebar">
@@ -49,6 +52,30 @@ export function AppSidebar() {
             );
           })}
         </nav>
+
+        {/* User info */}
+        {session?.user && (
+          <div className="border-t border-border p-3">
+            <div className="flex items-center gap-2 rounded-md bg-accent/50 p-2">
+              <User className="h-8 w-8 rounded-full bg-primary/20 p-1.5 text-primary" />
+              <div className="flex-1 min-w-0">
+                <p className="truncate text-sm font-medium">{session.user.name}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {(session.user as any).groupName}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-2 w-full justify-start text-muted-foreground"
+              onClick={() => signOut({ callbackUrl: "/login" })}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Выйти
+            </Button>
+          </div>
+        )}
       </div>
     </aside>
   );

@@ -13,7 +13,16 @@ export async function GET(request: Request) {
       productId: productId || undefined,
     });
 
-    return NextResponse.json(processes);
+    // Преобразуем в формат с current_state объектом
+    const result = processes.map((p: any) => ({
+      ...p,
+      current_state: p.state_name ? {
+        state_name: p.state_name,
+        state_sh_name: p.state_sh_name,
+      } : null,
+    }));
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching processes:", error);
     return NextResponse.json(

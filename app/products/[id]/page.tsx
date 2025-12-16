@@ -37,12 +37,25 @@ import {
   Save,
   Plus,
   Trash2,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Product, Parameter, ParameterValue } from "@/lib/types";
 
 interface ProductWithParams extends Product {
   parameters: (ParameterValue & { parameter?: Parameter })[];
+}
+
+interface ParamConstraint {
+  id_par: number;
+  par_name: string;
+  min_val: string | null;
+  max_val: string | null;
+}
+
+interface ValidationError {
+  id_par: number;
+  error: string;
 }
 
 export default function ProductDetailPage({
@@ -54,6 +67,8 @@ export default function ProductDetailPage({
   const router = useRouter();
   const [product, setProduct] = useState<ProductWithParams | null>(null);
   const [allParameters, setAllParameters] = useState<Parameter[]>([]);
+  const [constraints, setConstraints] = useState<ParamConstraint[]>([]);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editedParams, setEditedParams] = useState<
@@ -62,9 +77,10 @@ export default function ProductDetailPage({
 
   const fetchData = async () => {
     try {
-      const [productRes, paramsRes] = await Promise.all([
+      const [productRes, paramsRes, productParamsRes] = await Promise.all([
         fetch(`/api/products/${id}`),
         fetch("/api/parameters"),
+        fetch(`/api/products/${id}/parameters`),
       ]);
 
       if (!productRes.ok) {
@@ -73,20 +89,23 @@ export default function ProductDetailPage({
         return;
       }
 
-      const [productData, paramsData] = await Promise.all([
+      const [productData, paramsData, productParamsData] = await Promise.all([
         productRes.json(),
         paramsRes.json(),
+        productParamsRes.json(),
       ]);
 
       setProduct(productData);
       setAllParameters(paramsData);
+      setConstraints(productParamsData.constraints || []);
       setEditedParams(
-        productData.parameters?.map((p: ParameterValue) => ({
+        productParamsData.parameters?.map((p: ParameterValue) => ({
           id_par: p.id_par,
           val: p.val || "",
           note: p.note || "",
         })) || []
       );
+      setValidationErrors([]);
     } catch {
       toast.error("Ошибка загрузки данных");
     } finally {
@@ -118,6 +137,7 @@ export default function ProductDetailPage({
 
   const handleSaveParams = async () => {
     setSaving(true);
+    setValidationErrors([]);
     try {
       const res = await fetch(`/api/products/${id}/parameters`, {
         method: "PUT",
@@ -125,16 +145,30 @@ export default function ProductDetailPage({
         body: JSON.stringify({ parameters: editedParams }),
       });
 
-      if (!res.ok) throw new Error("Ошибка сохранения");
+      const data = await res.json();
+
+      if (res.status === 422 && data.validation_errors) {
+        setValidationErrors(data.validation_errors);
+        toast.error("Ошибки валидации параметров");
+        return;
+      }
+
+      if (!res.ok) throw new Error(data.error || "Ошибка сохранения");
 
       toast.success("Параметры сохранены");
       fetchData();
-    } catch {
-      toast.error("Ошибка сохранения параметров");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка сохранения параметров");
     } finally {
       setSaving(false);
     }
   };
+
+  const getConstraint = (id_par: number) => 
+    constraints.find(c => c.id_par === id_par);
+
+  const getError = (id_par: number) => 
+    validationErrors.find(e => e.id_par === id_par);
 
   const availableParams = allParameters.filter(
     (p) => !editedParams.find((ep) => ep.id_par === p.id_par)
@@ -246,28 +280,50 @@ export default function ProductDetailPage({
                         const paramInfo = allParameters.find(
                           (p) => p.id_par === param.id_par
                         );
+                        const constraint = getConstraint(param.id_par);
+                        const error = getError(param.id_par);
+                        
                         return (
-                          <TableRow key={param.id_par}>
+                          <TableRow key={param.id_par} className={error ? "bg-destructive/10" : ""}>
                             <TableCell>
                               <div>
                                 <p className="font-medium">{paramInfo?.name}</p>
                                 <code className="text-xs text-muted-foreground">
                                   {paramInfo?.short_name}
                                 </code>
+                                {constraint && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {constraint.min_val && constraint.max_val 
+                                      ? `${constraint.min_val} — ${constraint.max_val}`
+                                      : constraint.min_val 
+                                        ? `мин: ${constraint.min_val}`
+                                        : `макс: ${constraint.max_val}`
+                                    }
+                                  </p>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Input
-                                value={param.val}
-                                onChange={(e) =>
-                                  handleParamChange(
-                                    param.id_par,
-                                    "val",
-                                    e.target.value
-                                  )
-                                }
-                                placeholder="Значение"
-                              />
+                              <div className="space-y-1">
+                                <Input
+                                  value={param.val}
+                                  onChange={(e) =>
+                                    handleParamChange(
+                                      param.id_par,
+                                      "val",
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="Значение"
+                                  className={error ? "border-destructive" : ""}
+                                />
+                                {error && (
+                                  <p className="text-xs text-destructive flex items-center gap-1">
+                                    <AlertCircle className="h-3 w-3" />
+                                    {error.error}
+                                  </p>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>
                               <Input
@@ -308,20 +364,30 @@ export default function ProductDetailPage({
                   </div>
                 ) : (
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {availableParams.map((param) => (
-                      <Button
-                        key={param.id_par}
-                        variant="outline"
-                        className="justify-start"
-                        onClick={() => handleAddParam(param.id_par)}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        {param.name}
-                        <Badge variant="secondary" className="ml-auto">
-                          {param.type_par}
-                        </Badge>
-                      </Button>
-                    ))}
+                    {availableParams.map((param) => {
+                      const constraint = getConstraint(param.id_par);
+                      return (
+                        <Button
+                          key={param.id_par}
+                          variant="outline"
+                          className="justify-start h-auto py-2"
+                          onClick={() => handleAddParam(param.id_par)}
+                        >
+                          <Plus className="mr-2 h-4 w-4 shrink-0" />
+                          <div className="flex-1 text-left">
+                            <span>{param.name}</span>
+                            {constraint && (
+                              <span className="block text-xs text-muted-foreground">
+                                {constraint.min_val} — {constraint.max_val}
+                              </span>
+                            )}
+                          </div>
+                          <Badge variant="secondary" className="ml-2 shrink-0">
+                            {param.type_par}
+                          </Badge>
+                        </Button>
+                      );
+                    })}
                   </div>
                 )}
               </TabsContent>

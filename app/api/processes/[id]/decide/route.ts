@@ -4,16 +4,24 @@ import {
   getCurrentState,
   getAvailableDecisions,
   makeDecision,
+  getNextStateFromDb,
 } from "@/lib/db/queries/processes";
-import { getNextState } from "@/lib/db/transitions";
 import { getStateById } from "@/lib/db/queries/states";
 import { makeDecisionSchema, validateRequest } from "@/lib/validators";
+import { auth, checkStateAccess } from "@/lib/auth";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Проверяем авторизацию
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+    }
+
+    const userId = parseInt(session.user.id);
     const { id } = await params;
     const processId = parseInt(id);
     const body = await request.json();
@@ -38,6 +46,19 @@ export async function POST(
       return NextResponse.json({ error: "Траектория пуста" }, { status: 400 });
     }
 
+    // Проверяем права доступа к текущему состоянию
+    const hasAccess = await checkStateAccess(
+      userId,
+      process.type_pr,
+      currentStep.id_state
+    );
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Нет прав для работы с этим состоянием" },
+        { status: 403 }
+      );
+    }
+
     // Проверяем, что решение допустимо
     const availableDecisions = await getAvailableDecisions(processId);
     const isAllowed = availableDecisions.some(
@@ -50,8 +71,9 @@ export async function POST(
       );
     }
 
-    // Определяем следующее состояние
-    const nextStateId = getNextState(
+    // Определяем следующее состояние из БД
+    const nextStateId = await getNextStateFromDb(
+      process.type_pr,
       currentStep.id_state,
       validation.data.id_dec
     );
@@ -62,9 +84,8 @@ export async function POST(
       );
     }
 
-    // Применяем решение
-    const personId = validation.data.id_per || 1;
-    await makeDecision(processId, validation.data.id_dec, personId, nextStateId);
+    // Применяем решение (используем ID текущего пользователя)
+    await makeDecision(processId, validation.data.id_dec, userId, nextStateId);
 
     // Получаем информацию о новом состоянии
     const newState = await getStateById(nextStateId);

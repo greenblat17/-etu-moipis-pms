@@ -2,19 +2,32 @@ import { query, queryOne } from "../index";
 import type { Product, ParProd } from "@/lib/types";
 
 export async function getAllProducts(classId?: number): Promise<Product[]> {
-  const baseQuery = `
-    SELECT p.id_prod, p.name, p.id_class, c.name as class_name
-    FROM prod p
-    JOIN chem_class c ON c.id_class = p.id_class
-  `;
-
   if (classId) {
+    // Рекурсивный запрос для получения товаров из класса и всех подклассов
     return query<Product>(
-      baseQuery + ` WHERE p.id_class = $1 ORDER BY p.id_prod`,
+      `
+      WITH RECURSIVE class_tree AS (
+        SELECT id_class FROM chem_class WHERE id_class = $1
+        UNION ALL
+        SELECT c.id_class FROM chem_class c
+        JOIN class_tree ct ON c.main_class = ct.id_class
+      )
+      SELECT p.id_prod, p.name, p.id_class, c.name as class_name
+      FROM prod p
+      JOIN chem_class c ON c.id_class = p.id_class
+      WHERE p.id_class IN (SELECT id_class FROM class_tree)
+      ORDER BY p.id_prod
+      `,
       [classId]
     );
   }
-  return query<Product>(baseQuery + ` ORDER BY p.id_prod`);
+  
+  return query<Product>(`
+    SELECT p.id_prod, p.name, p.id_class, c.name as class_name
+    FROM prod p
+    JOIN chem_class c ON c.id_class = p.id_class
+    ORDER BY p.id_prod
+  `);
 }
 
 export async function getProductById(id: string): Promise<Product | null> {

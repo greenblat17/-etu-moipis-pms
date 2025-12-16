@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 import {
   getAllClasses,
+  getClassTree,
   createClass,
 } from "@/lib/db/queries/classes";
 import { createClassSchema, validateRequest } from "@/lib/validators";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const format = searchParams.get("format");
+
+    if (format === "tree") {
+      const tree = await getClassTree();
+      return NextResponse.json(tree);
+    }
+
     const classes = await getAllClasses();
     return NextResponse.json(classes);
   } catch (error) {

@@ -5,6 +5,7 @@ export interface ProductClass {
   short_name: string;
   name: string;
   main_class: number | null;
+  parent_name?: string | null;
 }
 
 // Alias for database queries (uses sh_name instead of short_name)

@@ -3,10 +3,42 @@ import type { ChemClass } from "@/lib/types";
 
 export async function getAllClasses(): Promise<ChemClass[]> {
   return query<ChemClass>(`
-    SELECT id_class, short_name AS sh_name, name, main_class 
-    FROM chem_class 
-    ORDER BY id_class
+    SELECT c.id_class, c.short_name AS sh_name, c.name, c.main_class,
+           p.name AS parent_name
+    FROM chem_class c
+    LEFT JOIN chem_class p ON p.id_class = c.main_class
+    ORDER BY COALESCE(c.main_class, c.id_class), c.main_class NULLS FIRST, c.id_class
   `);
+}
+
+// Получить классы в виде дерева
+export interface ClassTreeNode extends ChemClass {
+  children: ClassTreeNode[];
+}
+
+export async function getClassTree(): Promise<ClassTreeNode[]> {
+  const allClasses = await getAllClasses();
+  
+  // Строим дерево
+  const map = new Map<number, ClassTreeNode>();
+  const roots: ClassTreeNode[] = [];
+  
+  // Создаём узлы
+  for (const cls of allClasses) {
+    map.set(cls.id_class, { ...cls, children: [] });
+  }
+  
+  // Связываем родителей и детей
+  for (const cls of allClasses) {
+    const node = map.get(cls.id_class)!;
+    if (cls.main_class && map.has(cls.main_class)) {
+      map.get(cls.main_class)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  
+  return roots;
 }
 
 export async function getClassById(id: number): Promise<ChemClass | null> {

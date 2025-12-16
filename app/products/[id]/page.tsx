@@ -20,6 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -58,6 +65,12 @@ interface ValidationError {
   error: string;
 }
 
+interface ProcessTemplate {
+  id_type_proc: number;
+  sh_name: string;
+  name: string;
+}
+
 export default function ProductDetailPage({
   params,
 }: {
@@ -74,13 +87,18 @@ export default function ProductDetailPage({
   const [editedParams, setEditedParams] = useState<
     { id_par: number; val: string; note: string }[]
   >([]);
+  const [templates, setTemplates] = useState<ProcessTemplate[]>([]);
+  const [processDialogOpen, setProcessDialogOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("");
+  const [creatingProcess, setCreatingProcess] = useState(false);
 
   const fetchData = async () => {
     try {
-      const [productRes, paramsRes, productParamsRes] = await Promise.all([
+      const [productRes, paramsRes, productParamsRes, templatesRes] = await Promise.all([
         fetch(`/api/products/${id}`),
         fetch("/api/parameters"),
         fetch(`/api/products/${id}/parameters`),
+        fetch("/api/templates"),
       ]);
 
       if (!productRes.ok) {
@@ -89,14 +107,16 @@ export default function ProductDetailPage({
         return;
       }
 
-      const [productData, paramsData, productParamsData] = await Promise.all([
+      const [productData, paramsData, productParamsData, templatesData] = await Promise.all([
         productRes.json(),
         paramsRes.json(),
         productParamsRes.json(),
+        templatesRes.json(),
       ]);
 
       setProduct(productData);
       setAllParameters(paramsData);
+      setTemplates(templatesData);
       setConstraints(productParamsData.constraints || []);
       setEditedParams(
         productParamsData.parameters?.map((p: ParameterValue) => ({
@@ -174,6 +194,40 @@ export default function ProductDetailPage({
     (p) => !editedParams.find((ep) => ep.id_par === p.id_par)
   );
 
+  const handleStartProcess = async () => {
+    if (!selectedTemplate) {
+      toast.error("Выберите шаблон процесса");
+      return;
+    }
+
+    setCreatingProcess(true);
+    try {
+      const res = await fetch("/api/processes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type_pr: parseInt(selectedTemplate),
+          id_prod: id,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Ошибка создания процесса");
+      }
+
+      toast.success("Процесс запущен!");
+      setProcessDialogOpen(false);
+      setSelectedTemplate("");
+      router.push(`/processes/${data.id_process}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка создания процесса");
+    } finally {
+      setCreatingProcess(false);
+    }
+  };
+
   if (loading) {
     return (
       <PageContainer title="Загрузка..." description="">
@@ -224,7 +278,11 @@ export default function ProductDetailPage({
               <Badge variant="secondary">{product.class_name}</Badge>
             </div>
             <div className="pt-4">
-              <Button className="w-full" variant="outline">
+              <Button 
+                className="w-full" 
+                variant="outline"
+                onClick={() => setProcessDialogOpen(true)}
+              >
                 <Play className="mr-2 h-4 w-4" />
                 Запустить процесс
               </Button>
@@ -395,6 +453,45 @@ export default function ProductDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Dialog для запуска процесса */}
+      <Dialog open={processDialogOpen} onOpenChange={setProcessDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Запустить процесс</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">Товар</p>
+              <p className="font-medium">{product?.name}</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Шаблон процесса</label>
+              <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите шаблон" />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((t) => (
+                    <SelectItem key={t.id_type_proc} value={t.id_type_proc.toString()}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProcessDialogOpen(false)}>
+              Отмена
+            </Button>
+            <Button onClick={handleStartProcess} disabled={creatingProcess || !selectedTemplate}>
+              <Play className="mr-2 h-4 w-4" />
+              {creatingProcess ? "Запуск..." : "Запустить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageContainer>
   );
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { Package, Play, FileText, LayoutDashboard, LogOut, User, FolderTree } from "lucide-react";
+import { Package, Play, FileText, LayoutDashboard, LogOut, User, FolderTree, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -13,6 +13,7 @@ const navigation = [
   { title: "Классы", href: "/classes", icon: FolderTree },
   { title: "Процессы", href: "/processes", icon: Play },
   { title: "Шаблоны", href: "/templates", icon: FileText },
+  { title: "ДНФ-логика", href: "/dnf", icon: GitBranch },
 ];
 
 export function AppSidebar() {

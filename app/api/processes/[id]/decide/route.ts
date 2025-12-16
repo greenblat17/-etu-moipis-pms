@@ -7,6 +7,7 @@ import {
   getNextStateFromDb,
 } from "@/lib/db/queries/processes";
 import { getStateById } from "@/lib/db/queries/states";
+import { canTransition } from "@/lib/db/queries/dnf";
 import { makeDecisionSchema, validateRequest } from "@/lib/validators";
 import { auth, checkStateAccess } from "@/lib/auth";
 
@@ -80,6 +81,20 @@ export async function POST(
     if (!nextStateId) {
       return NextResponse.json(
         { error: "Переход для данного решения не определён" },
+        { status: 422 }
+      );
+    }
+
+    // Проверяем ДНФ-условие перехода (если задано)
+    const dnfCheck = await canTransition(
+      process.type_pr,
+      currentStep.id_state,
+      processId,
+      process.id_prod
+    );
+    if (!dnfCheck.allowed) {
+      return NextResponse.json(
+        { error: dnfCheck.reason || "Условие перехода не выполнено" },
         { status: 422 }
       );
     }
